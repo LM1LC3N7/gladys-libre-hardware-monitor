@@ -10,6 +10,8 @@ the notes of the version's GitHub Release.
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-20
+
 ### Added
 
 - First version: the sensors of a Windows PC read through the web server of
@@ -43,4 +45,5 @@ the notes of the version's GitHub Release.
 - A refused password is remembered as a slow salted hash (scrypt), never the
   password itself.
 
-[Unreleased]: https://github.com/LM1LC3N7/gladys-libre-hardware-monitor/commits/main
+[Unreleased]: https://github.com/LM1LC3N7/gladys-libre-hardware-monitor/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/LM1LC3N7/gladys-libre-hardware-monitor/releases/tag/v0.1.1
