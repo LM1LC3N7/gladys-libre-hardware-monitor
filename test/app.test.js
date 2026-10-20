@@ -553,3 +553,32 @@ test('the refusal key is a slow salted hash, never the password', async () => {
   assert.match(key, /^[0-9a-f]{64}$/);
   assert.equal(key, await ctx.app.refusalKey(ctx.app.config));
 });
+
+test('behind a reverse proxy: 502 / 503 / 504 mean the PC does not answer; 401 or 500 that it does', async () => {
+  for (const [status, online] of [
+    [502, 0],
+    [503, 0],
+    [504, 0],
+    [500, 1],
+    [401, 1],
+  ]) {
+    const lhm = createFakeLhm();
+    const ctx = await setup({ lhm, config: { url: 'https://lhm.example.org/pc' } });
+    assert.equal(lhm.requests[0].url, 'https://lhm.example.org:443/pc/data.json');
+    lhm.failures.push({ status });
+    await next(ctx);
+    assert.equal(last(ctx.gladys, ONLINE), online, `HTTP ${status}`);
+    assert.equal(
+      badge(ctx.gladys, COMPUTER.external_id),
+      online ? 'local' : 'unreachable',
+      `HTTP ${status}`,
+    );
+    assert.equal(badge(ctx.gladys, device('amdcpu-0').external_id), 'unreachable');
+    if (status !== 401) {
+      // A reconnection during the wait keeps it.
+      await ctx.app.start(ctx.gladys.fake.config);
+      assert.equal(last(ctx.gladys, ONLINE), online, `HTTP ${status}, reconnection`);
+    }
+    await running.stop();
+  }
+});

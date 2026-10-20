@@ -18,7 +18,8 @@ un logiciel libre qui tourne sur le PC.
   chaque carte réseau...), avec une fonction en lecture seule par capteur.
 - **Un appareil pour le PC**, dont la fonction « Online » vaut 1 tant que le
   PC répond et 0 quand rien ne répond (PC éteint, en veille, logiciel fermé,
-  réseau coupé) : utilisez-la dans une scène, par exemple pour être prévenu
+  réseau coupé ; derrière un proxy inverse, ses erreurs 502, 503 et 504) :
+  utilisez-la dans une scène, par exemple pour être prévenu
   quand le PC s'éteint. Une réponse en erreur (mot de passe refusé, autre
   logiciel sur le port) la laisse à 1 : le PC est allumé, seuls ses capteurs
   ne sont pas lus.

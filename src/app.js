@@ -55,6 +55,10 @@ const scryptAsync = promisify(scrypt);
 const SCRYPT = Object.freeze({ N: 2 ** 14, r: 8, p: 1, maxmem: 64 * 1024 * 1024 });
 /** No answer at all: the PC is off (or unreachable). Anything else: it answered. */
 const NO_ANSWER = new Set([CODES.UNREACHABLE, CODES.TIMEOUT]);
+/** What a reverse proxy answers when the PC behind it is off: no answer of the PC either. */
+const GATEWAY_ERRORS = new Set([502, 503, 504]);
+export const pcAnswered = (err) =>
+  !NO_ANSWER.has(err?.code) && !(err?.code === CODES.HTTP && GATEWAY_ERRORS.has(err.status));
 
 export class LhmApp {
   /**
@@ -392,7 +396,7 @@ export class LhmApp {
           identity,
           nextReadAt: this.now() + delay,
           retryDelay: Math.min(delay * 2, this.maxRetry()),
-          pcAnswers: !NO_ANSWER.has(err?.code),
+          pcAnswers: pcAnswered(err),
           message: this.errorMessage(err, delay),
         };
       }
@@ -437,9 +441,10 @@ export class LhmApp {
     if (generation !== this.generation) return;
     const wasOnline = this.online;
     this.online = false;
-    // "Online" is 0 only when nothing answered: a refusal, an error page or
-    // an unexpected answer come from a PC that is on.
-    this.pcAnswers = !NO_ANSWER.has(err?.code);
+    // "Online" is 0 only when nothing answered (no connection, timeout, or a
+    // reverse proxy saying 502 / 503 / 504: the PC behind it is off); a
+    // refusal, another error page or an unexpected answer come from a PC that is on.
+    this.pcAnswers = pcAnswered(err);
     this.stateKnown = true;
     this.halt();
     await this.publishStates();

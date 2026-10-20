@@ -45,7 +45,7 @@ up to date at the end of every milestone.
       less than an interval after it was sent) does not read again before
       the interval (`lastAttempt`), shows the last reading and the last
       status, and a failure of that dropped reading still delays the next
-      one; "Online" is 0 only when nothing answers (no connection,
+      one; "Online" is 0 only when nothing answers (no connection, 502 / 503 / 504,
       timeout); the refusal key is scrypt instead of HMAC-SHA256; the units
       of formatted values are looked up in Maps (a `__proto__` unit finds
       nothing); the loop over the main hardware is capped; Discovery is
@@ -93,8 +93,9 @@ up to date at the end of every milestone.
   not the room). Battery capacity (`Energy`, mWh) is not an energy index.
 - **"Online"** of the PC: `unknown` / `binary`, read only, published once
   known (a reading succeeded or failed), never at a configuration error.
-  It is 0 only when nothing answers (no connection, timeout); an answer in
-  error (401, 403, 404, 429, 5xx, not the JSON expected, certificate
+  It is 0 only when nothing answers (no connection, timeout, or 502 / 503 /
+  504: what a reverse proxy answers when the PC behind it is off); an answer
+  in error (401, 403, 404, 429, 500 and the other 5xx, not the JSON expected, certificate
   refused) keeps it at 1: the PC is on. The badge of the PC follows it; the
   hardware badges are `unreachable` as soon as their values are not read.
 - **Refusal key**: scrypt (N = 2^14, r = 8, 16 MB) of the address, user name

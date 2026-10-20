@@ -17,7 +17,7 @@ a free program that runs on the PC.
   disk, each network card...), with one read-only feature per sensor.
 - **One device for the PC**, whose "Online" feature is 1 while the PC answers
   and 0 when nothing answers at all (PC off, asleep, program closed, network
-  down): use it in a scene, for example to be told when the PC turns off. An
+  down; behind a reverse proxy, its errors 502, 503 and 504): use it in a scene, for example to be told when the PC turns off. An
   answer with an error (a refused password, another program on the port)
   keeps it at 1: the PC is on, only its sensors are not read.
 - **Read only.** Gladys sends nothing to the PC but the reading of the

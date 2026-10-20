@@ -28,8 +28,9 @@ the notes of the version's GitHub Release.
 - Libre Hardware Monitor 0.9.7 and later (raw values) as well as older
   versions (formatted values, decimal comma, Fahrenheit display).
 - "Test the connection" button.
-- "Online" of the PC is 0 only when nothing answers; an answer in error (a
-  refused password, another program on the port) keeps it at 1.
+- "Online" of the PC is 0 only when nothing answers (no connection, timeout,
+  or 502 / 503 / 504 from a reverse proxy whose PC is off); an answer in error
+  (a refused password, another program on the port, a 500) keeps it at 1.
 - An HTTP 429 or a server error pauses the readings for at least the reading
   interval, also across a restart of the integration; a reconnection to
   Gladys never reads the PC again before the interval, even while a reading
