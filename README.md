@@ -20,7 +20,7 @@ Gladys ⇄ SDK ⇄ src/app.js (LhmApp)
                  ├─ src/lhm/parse.js    the sensor tree -> plain objects (pure, bounded)
                  ├─ src/lhm/errors.js   error codes, refusal of the credentials
                  ├─ src/budget.js       states per minute
-                 ├─ src/store.js        /data: refusal (salted HMAC), 429 pause
+                 ├─ src/store.js        /data: refusal (salted scrypt), 429/5xx pause
                  └─ src/devices.js      hardware and PC devices (pure)
 ```
 
@@ -39,7 +39,7 @@ Gladys ⇄ SDK ⇄ src/app.js (LhmApp)
   always goes.
 - **Authentication**: optional HTTP Basic (user name and password of the web
   server of Libre Hardware Monitor), in the `Authorization` header only.
-  HTTP 401 is final: a salted HMAC of the address and credentials is kept in
+  HTTP 401 is final: a salted scrypt hash of the address and credentials is kept in
   `/data`, nothing is sent again until the configuration is saved or "Test
   the connection" is pressed. HTTP 429 pauses the readings (Retry-After,
   1 min to 6 h, kept in `/data`, bounded when read back); other failures

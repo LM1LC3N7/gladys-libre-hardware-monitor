@@ -42,7 +42,7 @@ src/lhm/http.js                   the only network access (node:http / https, ca
 src/lhm/parse.js                  the sensor tree -> plain objects (pure, bounded, no recursion)
 src/lhm/errors.js                 LhmError, refusal of the credentials (401)
 src/budget.js                     the states-per-minute window (300/min limit of Gladys)
-src/store.js                      /data: refusal (salted HMAC), 429 pause (never the password)
+src/store.js                      /data: refusal (salted scrypt), 429/5xx pause (never the password)
 src/devices.js                    the Gladys devices, units, external ids (pure)
 src/config.js                     DEFAULTS (mirror the manifest defaults) + normalization
 src/constants.js, src/i18n.js     keys, limits, timings; runtime texts (en/fr)
@@ -60,7 +60,7 @@ category, the rest `unknown` with the unit in the name; never an energy
 feature; states only for created features, changes only, 250 per minute,
 oldest first; never a reading faster than the interval (retries, a
 reconnection to Gladys, the scan button); a 401 is final and remembered by a
-salted HMAC, never the password; a 429 pause is kept in `/data` and bounded.
+salted scrypt hash, never the password; a 429 / 5xx pause is kept in `/data` and bounded.
 
 ## Rules
 

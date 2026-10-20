@@ -27,7 +27,7 @@ up to date at the end of every milestone.
       sets "essentials" / "all", 200 features per device, created features
       never lost; states of the created features only, rounded, changes
       only, 250 per minute with the oldest values first; 401 final and
-      remembered (salted HMAC in `/data`), 429 pause kept in `/data` and
+      remembered (salted hash in `/data`), 429 pause kept in `/data` and
       bounded when read back, retries from the reading interval to 5 min;
       reconnection to Gladys: status and Discovery again, no reading sooner
       than the interval; "Test the connection"; docs en/fr; cover. Tested
@@ -35,6 +35,22 @@ up to date at the end of every milestone.
       Monitor and a loopback http server. **Never tested with a real PC.**
       No Docker on this PC: no e2e test in a container. The store validator
       was not run by the developing agent (it cannot run it).
+
+- [x] **Review 1 corrections** (2026-10-20): a 429 pause is never shorter
+      than the reading interval; a 5xx (with or without Retry-After) is
+      kept in `/data` like a 429, and a successful reading forgets it;
+      `publishStates` runs in a queue (the budget is computed inside, two
+      publications at once never both spend it) and a failed batch counts
+      as sent; a reconnection to Gladys while a reading is in flight (or
+      less than an interval after it was sent) does not read again before
+      the interval (`lastAttempt`), shows the last reading and the last
+      status, and a failure of that dropped reading still delays the next
+      one; "Online" is 0 only when nothing answers (no connection,
+      timeout); the refusal key is scrypt instead of HMAC-SHA256; the units
+      of formatted values are looked up in Maps (a `__proto__` unit finds
+      nothing); the loop over the main hardware is capped; Discovery is
+      published again from the last reading while blocked by a 401; the
+      motherboard id change before / after 0.9.5 is documented.
 
 ## Next
 
@@ -77,6 +93,24 @@ up to date at the end of every milestone.
   not the room). Battery capacity (`Energy`, mWh) is not an energy index.
 - **"Online"** of the PC: `unknown` / `binary`, read only, published once
   known (a reading succeeded or failed), never at a configuration error.
+  It is 0 only when nothing answers (no connection, timeout); an answer in
+  error (401, 403, 404, 429, 5xx, not the JSON expected, certificate
+  refused) keeps it at 1: the PC is on. The badge of the PC follows it; the
+  hardware badges are `unreachable` as soon as their values are not read.
+- **Refusal key**: scrypt (N = 2^14, r = 8, 16 MB) of the address, user name
+  and password, salted with a random salt of `/data`. The salt lives in the
+  same file: the hash makes a guess of the password from a copy of `/data`
+  slow, not impossible. Accepted: the password crosses the LAN in clear at
+  every reading anyway (Basic over http), which is said in the manifest.
+- **Ids before / after 0.9.5**: without `HardwareId` (0.9.4 and older), the
+  motherboard takes the id of its chip (`lpc-...`); from 0.9.5 it is
+  `motherboard`. An upgrade of Libre Hardware Monitor makes it a new
+  device, like in Home Assistant (the ids are those of the reference
+  library). Documented in docs en/fr; not migrated.
+- **Reconnection while a reading is in flight**: `lastAttempt` (address,
+  credentials, time sent) is kept in memory; a start that is not forced by
+  the user waits for the interval from it, shows the last reading in
+  Discovery and the last status, and reads then.
 - **Rounding** (fewer changes, fewer states): 0.1 °C, 1 %, 1 RPM, 1 MHz,
   0.1 W, 0.001 V, 0.01 A, 0.01 GB, 1 MB, 0.1 KB/s. A value outside the
   bounds of its feature (255 °C of a missing probe) is not published.
@@ -92,10 +126,15 @@ up to date at the end of every milestone.
   longer); a reconnection to Gladys reuses a reading younger than the
   interval; the scan button publishes the last reading. Only the user
   (saved configuration, "Test the connection") reads at once.
-- **401** (with or without credentials) is final: a salted HMAC of the
-  address and credentials in `/data`, never the password; nothing is sent
-  again with the same values until the user acts. **429**: pause of 1 min to
-  6 h (Retry-After), kept in `/data`, read back bounded to 6 h.
+- **401** (with or without credentials) is final: a salted scrypt hash of
+  the address and credentials in `/data`, never the password; nothing is
+  sent again with the same values until the user acts. **429**: pause of
+  max(1 min, interval) to 6 h (Retry-After), **5xx**: the retry delay or its
+  Retry-After; both kept in `/data` with their status, read back bounded to
+  6 h, forgotten by a successful reading.
+- **State budget is serialized**: `publishStates` calls run in a queue; a
+  failed `publishChangedStates` counts every state it tried (some batches of
+  100 may have been taken).
 - **http only by default** (the web server of Libre Hardware Monitor has no
   https); https accepted for a reverse proxy, with a certificate from a known
   authority only (no pinning: not worth it for a read-only LAN sensor feed).

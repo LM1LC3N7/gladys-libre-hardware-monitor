@@ -53,6 +53,21 @@ const KIB = 1024;
 const MIB = 1024 * KIB;
 const GIB = 1024 * MIB;
 const TIB = 1024 * GIB;
+// Maps, not object literals: a unit "__proto__" or "toString" finds nothing.
+const DATA_UNITS = new Map([
+  ['MB', MIB],
+  ['TB', TIB],
+]);
+const SMALL_DATA_UNITS = new Map([
+  ['GB', GIB],
+  ['KB', KIB],
+]);
+const THROUGHPUT_UNITS = new Map([
+  ['B/s', 1],
+  ['KB/s', KIB],
+  ['MB/s', MIB],
+  ['GB/s', GIB],
+]);
 
 const isObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 const own = (object, key) =>
@@ -127,11 +142,11 @@ export function sensorValue(node, type) {
       // The display may be set to Fahrenheit; Gladys gets Celsius.
       return unit === '°F' ? ((n - 32) * 5) / 9 : n;
     case 'Data':
-      return n * ({ MB: MIB, TB: TIB }[unit] ?? GIB);
+      return n * (DATA_UNITS.get(unit) ?? GIB);
     case 'SmallData':
-      return n * ({ GB: GIB, KB: KIB }[unit] ?? MIB);
+      return n * (SMALL_DATA_UNITS.get(unit) ?? MIB);
     case 'Throughput':
-      return n * ({ 'B/s': 1, 'KB/s': KIB, 'MB/s': MIB, 'GB/s': GIB }[unit] ?? 1);
+      return n * (THROUGHPUT_UNITS.get(unit) ?? 1);
     default:
       return n;
   }
@@ -208,7 +223,8 @@ export function parseData(json) {
   const counters = { nodes: 0, sensors: 0 };
   const hardware = [];
   const ids = new Set();
-  for (const main of mains) {
+  for (let i = 0; i < mains.length && i < LIMITS.NODES; i += 1) {
+    const main = mains[i];
     if (hardware.length >= LIMITS.HARDWARE || counters.nodes > LIMITS.NODES) break;
     if (!isObject(main)) continue;
     const sensors = collectSensors(main, counters);

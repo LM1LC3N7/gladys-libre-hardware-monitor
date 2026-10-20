@@ -8,6 +8,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { GladysApiError } from '@gladysassistant/integration-sdk';
 import { createFakeGladys } from '@gladysassistant/integration-sdk/testing';
 import { LhmApp } from '../src/app.js';
 import { ACTIONS, INTERVALS, LIMITS, SENSOR_SETS, STORE_FILE } from '../src/constants.js';
@@ -68,7 +69,7 @@ async function setup({
   const app = new LhmApp({
     gladys,
     logger,
-    request: lhm.request,
+    request: (...args) => lhm.request(...args),
     dataDir,
     now: () => clock.now,
     timers,
@@ -278,7 +279,7 @@ test('authentication asked (401) without credentials: final until the configurat
   const { app, gladys, timers } = ctx;
   assert.match(gladys.fake.connectionStatus.message.en, /asks for a user name and a password/);
   assert.deepEqual(timers.delays(), [], 'never retried alone');
-  assert.equal(last(gladys, ONLINE), 0);
+  assert.equal(last(gladys, ONLINE), 1, 'the PC answered (with a refusal): it is on');
   await app.start(gladys.fake.config); // a reconnection to Gladys
   assert.equal(lhm.requests.length, 1, 'not tried again');
   await gladys.fake.configUpdated({ ...BASE_CONFIG, username: USERNAME, password: PASSWORD });
@@ -385,4 +386,170 @@ test('read only: a command on a feature is refused by the SDK, nothing is sent t
   const ack = await gladys.fake.setValue(cpu, cpu.features[0], 1);
   assert.notEqual(ack?.success, true);
   assert.equal(lhm.requests.length, 1);
+});
+
+// --- Review 1 -------------------------------------------------------------------
+
+test('HTTP 429: the pause is never shorter than the reading interval', async () => {
+  for (const headers of [{}, { 'retry-after': '1' }, { 'retry-after': '90' }]) {
+    const lhm = createFakeLhm();
+    lhm.failures.push({ status: 429, headers });
+    const ctx = await setup({ lhm, config: { poll_interval: '300' } });
+    assert.deepEqual(ctx.timers.delays(), [300_000], JSON.stringify(headers));
+    await running.stop();
+  }
+});
+
+test('a server error without Retry-After is kept in /data: a restart does not read at once', async () => {
+  const lhm = createFakeLhm();
+  lhm.down = { status: 503 };
+  const ctx = await setup({ lhm, config: { poll_interval: '300' } });
+  assert.deepEqual(ctx.timers.delays(), [300_000]);
+  await running.stop();
+  ctx.clock.now += 5_000;
+  const again = await setup({ lhm, dataDir: ctx.dataDir, config: { poll_interval: '300' } });
+  assert.equal(lhm.requests.length, 1, 'not read again after the restart');
+  assert.match(again.gladys.fake.connectionStatus.message.en, /server error \(HTTP 503\)/);
+  // Back to normal: the pause is forgotten.
+  lhm.down = null;
+  await next(again);
+  assert.equal(again.gladys.fake.connectionStatus.connected, true);
+  const store = JSON.parse(readFileSync(join(ctx.dataDir, STORE_FILE), 'utf8'));
+  assert.deepEqual(
+    Object.keys(store.meta).filter((k) => k.startsWith('pause')),
+    [],
+  );
+});
+
+test('Gladys reconnects while a reading is in flight: no second reading before the interval', async () => {
+  const ctx = await setup();
+  const { app, gladys, lhm, timers } = ctx;
+  const releases = [];
+  lhm.request = async (url) => {
+    lhm.requests.push({ url });
+    return new Promise((_, reject) => releases.push(() => reject(unreachable())));
+  };
+  ctx.clock.now += 60_000;
+  const [timer] = timers.pending.values();
+  timers.pending.delete(timer.id);
+  const inFlight = timer.fn(); // the reading leaves, the PC does not answer yet
+  await new Promise((resolve) => setImmediate(resolve));
+  for (let i = 0; i < 3; i += 1) {
+    ctx.clock.now += 1_000;
+    await app.stop();
+    await app.start(gladys.fake.config);
+  }
+  assert.equal(lhm.requests.length, 2, 'the first reading and the one in flight only');
+  assert.deepEqual(timers.delays(), [57_000], 'the interval counted from the reading in flight');
+  assert.equal(gladys.fake.connectionStatus.connected, true, 'the status is published again');
+  for (const release of releases) release();
+  await inFlight;
+  // A later reconnection keeps the wait of that failure.
+  ctx.clock.now += 1_000;
+  await app.start(gladys.fake.config);
+  assert.equal(lhm.requests.length, 2);
+});
+
+/** Two CPUs of 180 cores, every value different. */
+function bigTree() {
+  const make = (id) => ({
+    hardwareId: id,
+    name: id,
+    image: 'cpu',
+    sensors: Array.from({ length: 180 }, (_, i) => ({
+      id: `${id}/load/${i}`,
+      text: `Core #${i}`,
+      type: 'Load',
+      value: 10 + (i % 50),
+    })),
+  });
+  return lhmTree({ hardware: [make('/cpu-a/0'), make('/cpu-b/0')] });
+}
+
+test('state budget: two publications at once never both spend it', async () => {
+  const tree = bigTree();
+  const data = parseData(tree);
+  const ctx = await setup({ lhm: createFakeLhm({ tree }), created: [COMPUTER] });
+  const { app, gladys } = ctx;
+  const before = gladys.fake.states.length;
+  const a = device('cpu-a-0', SENSOR_SETS.ALL, data);
+  const b = device('cpu-b-0', SENSOR_SETS.ALL, data);
+  gladys.devices = [...gladys.devices, a];
+  const first = app.deviceChanged(a);
+  gladys.devices = [...gladys.devices, b];
+  const second = app.deviceChanged(b);
+  await Promise.all([first, second]);
+  assert.ok(before + 360 > LIMITS.STATES_PER_MINUTE, 'more values than the budget');
+  assert.ok(gladys.fake.states.length <= LIMITS.STATES_PER_MINUTE);
+  assert.equal(app.budget.used(), gladys.fake.states.length);
+});
+
+test('state budget: a failed batch counts as sent', async () => {
+  const tree = bigTree();
+  const data = parseData(tree);
+  const ctx = await setup({
+    lhm: createFakeLhm({ tree }),
+    created: [COMPUTER],
+    config: { poll_interval: '30' },
+  });
+  const { app, gladys } = ctx;
+  const route = gladys.fake.route.bind(gladys.fake);
+  let posts = 0;
+  gladys.fake.route = (method, path, body) => {
+    if (method === 'POST' && path === '/state') {
+      posts += 1;
+      if (posts === 3) throw new GladysApiError(503, 'UNAVAILABLE', 'busy');
+    }
+    return route(method, path, body);
+  };
+  const start = gladys.fake.states.length;
+  const a = device('cpu-a-0', SENSOR_SETS.ALL, data);
+  const b = device('cpu-b-0', SENSOR_SETS.ALL, data);
+  gladys.devices = [...gladys.devices, a, b];
+  await app.deviceChanged(a); // batches of 100: the 1st and 2nd taken, the 3rd fails
+  for (const hardware of tree.Children[0].Children) {
+    for (const group of hardware.Children) for (const s of group.Children) s.RawValue += 1;
+  }
+  await next(ctx); // 30 s later: values changed
+  assert.ok(
+    gladys.fake.states.length - start <= LIMITS.STATES_PER_MINUTE,
+    `${gladys.fake.states.length - start} states taken within 30 s`,
+  );
+});
+
+test('"Online" stays 1 when the PC answers with an error; 0 only without an answer', async () => {
+  const lhm = createFakeLhm();
+  const ctx = await setup({ lhm });
+  lhm.failures.push({ status: 404 });
+  await next(ctx);
+  assert.equal(last(ctx.gladys, ONLINE), 1);
+  assert.equal(badge(ctx.gladys, COMPUTER.external_id), 'local');
+  assert.equal(badge(ctx.gladys, device('amdcpu-0').external_id), 'unreachable');
+  lhm.failures.push(unreachable());
+  await next(ctx);
+  assert.equal(last(ctx.gladys, ONLINE), 0);
+  // A reconnection during the wait keeps it.
+  await ctx.app.start(ctx.gladys.fake.config);
+  assert.equal(last(ctx.gladys, ONLINE), 0);
+});
+
+test('blocked by a 401: a reconnection still shows the last reading in Discovery', async () => {
+  const lhm = createFakeLhm();
+  const ctx = await setup({ lhm });
+  lhm.credentials = { username: USERNAME, password: PASSWORD };
+  await next(ctx);
+  assert.match(ctx.gladys.fake.connectionStatus.message.en, /asks for a user name/);
+  const discoveries = ctx.gladys.fake.bodies('POST', '/discovered_device').length;
+  await ctx.app.start(ctx.gladys.fake.config);
+  assert.equal(lhm.requests.length, 2, 'not tried again');
+  assert.equal(ctx.gladys.fake.bodies('POST', '/discovered_device').length, discoveries + 1);
+});
+
+test('the refusal key is a slow salted hash, never the password', async () => {
+  const lhm = createFakeLhm({ credentials: { username: USERNAME, password: 'other' } });
+  const ctx = await setup({ lhm, config: { username: USERNAME, password: PASSWORD } });
+  const store = JSON.parse(readFileSync(join(ctx.dataDir, STORE_FILE), 'utf8'));
+  const [key] = Object.values(store.refusals);
+  assert.match(key, /^[0-9a-f]{64}$/);
+  assert.equal(key, await ctx.app.refusalKey(ctx.app.config));
 });

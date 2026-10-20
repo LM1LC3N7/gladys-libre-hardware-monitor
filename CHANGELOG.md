@@ -28,5 +28,18 @@ the notes of the version's GitHub Release.
 - Libre Hardware Monitor 0.9.7 and later (raw values) as well as older
   versions (formatted values, decimal comma, Fahrenheit display).
 - "Test the connection" button.
+- "Online" of the PC is 0 only when nothing answers; an answer in error (a
+  refused password, another program on the port) keeps it at 1.
+- An HTTP 429 or a server error pauses the readings for at least the reading
+  interval, also across a restart of the integration; a reconnection to
+  Gladys never reads the PC again before the interval, even while a reading
+  is in flight.
+- The 250 states per minute hold when several publications start at once or
+  when Gladys refuses part of them.
+
+### Security
+
+- A refused password is remembered as a slow salted hash (scrypt), never the
+  password itself.
 
 [Unreleased]: https://github.com/LM1LC3N7/gladys-libre-hardware-monitor/commits/main

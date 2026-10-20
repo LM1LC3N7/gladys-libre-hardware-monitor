@@ -1,12 +1,13 @@
 // -----------------------------------------------------------------------------
 // A small JSON file in the writable /data volume, for what the integration
 // learns and must keep across restarts:
-//   - refusals: an HMAC (keyed with `meta.salt`) of the address, user name and
+//   - refusals: a scrypt hash (salted with `meta.salt`) of the address, user name and
 //     password Libre Hardware Monitor refused (HTTP 401), per address: a
 //     restart (or a reconnection to Gladys) with the same values does not try
 //     again.
-//   - meta: `salt`, a random key generated once for the HMAC above, and
-//     `pausedUntil|<base>`, the end of an HTTP 429 pause (ms).
+//   - meta: `salt`, a random salt generated once for the hash above,
+//     `pausedUntil|<base>`, the end of an HTTP 429 or 5xx pause (ms), and
+//     `pauseReason|<base>`, its HTTP status.
 // The user name and the password are never written here. Writes are atomic
 // (temporary file + rename) and queued. When the file cannot be written (no
 // /data during development), values stay in memory.

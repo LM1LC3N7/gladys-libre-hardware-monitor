@@ -81,6 +81,11 @@ test('sensorValue: units of the formatted values', () => {
   assert.equal(v('TimeSpan', '01:02:03'), 3723);
   assert.equal(v('TimeSpan', '2.01:02:03'), 2 * 86400 + 3723);
   assert.equal(v('TimeSpan', '', 3723), 3723);
+  for (const unit of ['__proto__', 'constructor', 'toString']) {
+    assert.equal(v('Data', `1 ${unit}`), 1024 ** 3, `Data, ${unit}`);
+    assert.equal(v('SmallData', `1 ${unit}`), 1024 ** 2, `SmallData, ${unit}`);
+    assert.equal(v('Throughput', `1 ${unit}`), 1, `Throughput, ${unit}`);
+  }
   assert.equal(v('Load', 'x'.repeat(100)), null);
   assert.equal(v('Load', { toString: () => '1' }), null);
 });

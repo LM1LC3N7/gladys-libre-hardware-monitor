@@ -16,10 +16,12 @@ un logiciel libre qui tourne sur le PC.
 
 - **Un appareil par matériel** (CPU, GPU, carte mère, mémoire, chaque disque,
   chaque carte réseau...), avec une fonction en lecture seule par capteur.
-- **Un appareil pour le PC**, dont la fonction « Online » vaut 1 tant que
-  Libre Hardware Monitor répond et 0 sinon (PC éteint, en veille, logiciel
-  fermé) : utilisez-la dans une scène, par exemple pour être prévenu quand le
-  PC s'éteint.
+- **Un appareil pour le PC**, dont la fonction « Online » vaut 1 tant que le
+  PC répond et 0 quand rien ne répond (PC éteint, en veille, logiciel fermé,
+  réseau coupé) : utilisez-la dans une scène, par exemple pour être prévenu
+  quand le PC s'éteint. Une réponse en erreur (mot de passe refusé, autre
+  logiciel sur le port) la laisse à 1 : le PC est allumé, seuls ses capteurs
+  ne sont pas lus.
 - **Lecture seule.** Gladys n'envoie rien au PC que la lecture des capteurs :
   aucune commande, aucun arrêt, rien qu'un « tout éteindre » ou un assistant
   vocal pourrait déclencher.
@@ -95,6 +97,13 @@ appareil garde toutes ses fonctions, et les nouvelles sont proposées par
 - Un mot de passe refusé (HTTP 401) arrête les lectures jusqu'à ce que vous
   enregistriez la configuration ou appuyiez sur « Tester la connexion » :
   Gladys ne réessaie jamais seul le même mot de passe.
+- Un HTTP 429 (trop de requêtes) ou une erreur serveur (5xx) suspend les
+  lectures au moins pendant l'intervalle de lecture (429 : 1 min à 6 h) ; la
+  pause est gardée au redémarrage de l'intégration.
+- Passer de Libre Hardware Monitor 0.9.4 ou plus ancien à 0.9.5 ou plus récent
+  change l'identifiant de la carte mère (sa puce, `lpc-...`, devient
+  `motherboard`), comme dans Home Assistant : la carte mère apparaît comme un
+  nouvel appareil dans Découverte ; supprimez l'ancien une fois le nouveau créé.
 
 ## Dépannage
 

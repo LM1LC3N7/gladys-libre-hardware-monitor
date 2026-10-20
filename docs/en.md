@@ -15,9 +15,11 @@ a free program that runs on the PC.
 
 - **One device per piece of hardware** (CPU, GPU, motherboard, memory, each
   disk, each network card...), with one read-only feature per sensor.
-- **One device for the PC**, whose "Online" feature is 1 while Libre Hardware
-  Monitor answers and 0 when it does not (PC off, asleep, program closed):
-  use it in a scene, for example to be told when the PC turns off.
+- **One device for the PC**, whose "Online" feature is 1 while the PC answers
+  and 0 when nothing answers at all (PC off, asleep, program closed, network
+  down): use it in a scene, for example to be told when the PC turns off. An
+  answer with an error (a refused password, another program on the port)
+  keeps it at 1: the PC is on, only its sensors are not read.
 - **Read only.** Gladys sends nothing to the PC but the reading of the
   sensors: no command, no shutdown, nothing that "turn everything off" or a
   voice assistant could trigger.
@@ -86,6 +88,13 @@ device keeps all of its features, and the new ones are offered with "Update".
 - A refused password (HTTP 401) stops the readings until you save the
   configuration or press "Test the connection": Gladys never tries the same
   password again by itself.
+- An HTTP 429 (too many requests) or a server error (5xx) pauses the
+  readings at least for the reading interval (429: 1 min to 6 h); the pause
+  is kept across a restart of the integration.
+- Moving from Libre Hardware Monitor 0.9.4 or older to 0.9.5 or later changes
+  the id of the motherboard (its chip, `lpc-...`, becomes `motherboard`),
+  like in Home Assistant: the motherboard appears as a new device in
+  Discovery; delete the old one once the new one is created.
 
 ## Troubleshooting
 

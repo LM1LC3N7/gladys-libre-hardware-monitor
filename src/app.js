@@ -21,8 +21,9 @@
 // sooner than the interval.
 // -----------------------------------------------------------------------------
 
-import { createHmac } from 'node:crypto';
+import { scrypt } from 'node:crypto';
 import { join } from 'node:path';
+import { promisify } from 'node:util';
 import { createLogger } from '@gladysassistant/integration-sdk';
 import { Budget } from './budget.js';
 import { normalizeConfig } from './config.js';
@@ -49,6 +50,11 @@ const TEST_BUDGET_MS = 25_000;
 /** Entries per publishTransports call (the SDK refuses more). */
 export const TRANSPORTS_PER_CALL = 100;
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+const scryptAsync = promisify(scrypt);
+/** scrypt cost of the refusal key: 16 MB, about 50 ms, once per start. */
+const SCRYPT = Object.freeze({ N: 2 ** 14, r: 8, p: 1, maxmem: 64 * 1024 * 1024 });
+/** No answer at all: the PC is off (or unreachable). Anything else: it answered. */
+const NO_ANSWER = new Set([CODES.UNREACHABLE, CODES.TIMEOUT]);
 
 export class LhmApp {
   /**
@@ -92,8 +98,18 @@ export class LhmApp {
      */
     this.retry = null;
     this.lastRead = null;
+    /**
+     * The last reading SENT (answered or not): { identity, at }. A
+     * reconnection to Gladys while it is in flight, or just after, waits for
+     * the interval from it.
+     */
+    this.lastAttempt = null;
+    /** The last status sent ({ connected, message }), sent again by a deferred start. */
+    this.statusValue = null;
     /** Feature external id -> { value, at }: the last sensor values Gladys accepted. */
     this.published = new Map();
+    /** publishStates() calls run one after the other (the budget is computed inside). */
+    this.statesQueue = Promise.resolve();
     this.reset();
   }
 
@@ -101,7 +117,10 @@ export class LhmApp {
     // Gladys keeps the status and the Discovery list in memory only: after a
     // restart of the core (a new `connected`), both are published again.
     this.lastStatus = null;
+    /** The sensor values of `reading` are current. */
     this.online = false;
+    /** The PC answered the last request (even with an error): "Online". */
+    this.pcAnswers = false;
     /** Online or not is known (a reading succeeded or failed since the start). */
     this.stateKnown = false;
     this.blocked = false;
@@ -140,17 +159,24 @@ export class LhmApp {
     return this.enqueue(() => this.run(rawConfig, { force }));
   }
 
-  /** The values a refusal is about (HMAC with the salt of /data: never the password). */
+  /**
+   * The values a refusal is about: a slow, salted hash (scrypt, the salt of
+   * /data), never the password. The file holds the salt too: scrypt makes a
+   * guess of the password from a copy of /data costly, not impossible
+   * (TODO.md, "Decisions").
+   */
   async refusalKey(config) {
-    return createHmac('sha256', await this.store.salt())
-      .update(
-        JSON.stringify([
-          config.lhm.base,
-          config.credentials?.username ?? null,
-          config.credentials?.password ?? null,
-        ]),
-      )
-      .digest('hex');
+    const key = await scryptAsync(
+      JSON.stringify([
+        config.lhm.base,
+        config.credentials?.username ?? null,
+        config.credentials?.password ?? null,
+      ]),
+      await this.store.salt(),
+      32,
+      SCRYPT,
+    );
+    return key.toString('hex');
   }
 
   async stop() {
@@ -197,12 +223,22 @@ export class LhmApp {
       );
       return;
     }
+    const identity = this.identity();
+    const { retry, lastRead, lastAttempt } = this;
+    // While waiting, Discovery still shows the last reading of this PC
+    // (Gladys forgot it when it restarted); nothing is marked online.
+    const showLastReading = async () => {
+      if (lastRead?.identity !== identity) return;
+      this.reading = lastRead.data;
+      await this.publishDiscovered();
+    };
     // Credentials refused with these very values are not tried again alone.
     const base = config.lhm.base;
     const refused = this.store.get('refusals', base);
     if (refused && refused === (await this.refusalKey(config)) && !force) {
       this.blocked = true;
       this.logger.warn('Credentials refused earlier: not tried again');
+      await showLastReading();
       await this.setStatus(false, this.authMessage());
       return;
     }
@@ -215,25 +251,20 @@ export class LhmApp {
     this.logger.info(
       `Using Libre Hardware Monitor at ${config.lhm.origin}${config.credentials ? ' (Basic authentication)' : ''}`,
     );
-    const identity = this.identity();
-    const { retry, lastRead } = this;
-    // While waiting, Discovery still shows the last reading of this PC
-    // (Gladys forgot it when it restarted); nothing is marked online.
-    const showLastReading = async () => {
-      if (lastRead?.identity !== identity) return;
-      this.reading = lastRead.data;
-      await this.publishDiscovered();
-    };
-    // An HTTP 429 pause outlives a restart and a reconnection to Gladys
-    // (bounded, even when the file says more); only the user lifts it.
+    // An HTTP 429 or 5xx pause outlives a restart and a reconnection to
+    // Gladys (bounded, even when the file says more); only the user lifts it.
     const stored = Number(this.store.get('meta', this.pauseKey())) || 0;
     const pausedUntil = Math.min(stored, this.now() + INTERVALS.BUSY_MAX_MS);
-    if (force && stored) await this.store.set('meta', this.pauseKey(), null);
+    const reason = Number(this.store.get('meta', this.pauseReasonKey())) || 429;
+    if (force && stored) await this.clearPause();
     if (!force && this.now() < pausedUntil) {
       this.pausedUntil = pausedUntil;
       const delay = pausedUntil - this.now();
       await showLastReading();
-      await this.setStatus(false, T.status.busy(delay));
+      await this.setStatus(
+        false,
+        reason === 429 ? T.status.busy(delay) : T.status.serverError(reason, delay),
+      );
       this.schedule(delay, () => this.connect(generation));
       return;
     }
@@ -241,6 +272,7 @@ export class LhmApp {
     // growing delay; only the user skips it.
     if (!force && retry?.identity === identity && this.now() < retry.nextReadAt) {
       this.retryDelay = retry.retryDelay;
+      this.pcAnswers = retry.pcAnswers;
       this.stateKnown = true;
       await showLastReading();
       await this.publishStates();
@@ -257,6 +289,23 @@ export class LhmApp {
       this.scheduleLoop(lastRead.at + config.intervalMs - this.now(), generation);
       return;
     }
+    // A reading was sent less than an interval ago (still in flight when
+    // Gladys reconnected, its result dropped): the next one waits for the
+    // interval; what was known is shown again meanwhile.
+    if (
+      !force &&
+      lastAttempt?.identity === identity &&
+      this.now() - lastAttempt.at < config.intervalMs
+    ) {
+      await showLastReading();
+      if (this.statusValue) {
+        await this.setStatus(this.statusValue.connected, this.statusValue.message);
+      }
+      this.schedule(lastAttempt.at + config.intervalMs - this.now(), () =>
+        this.connect(generation),
+      );
+      return;
+    }
     await this.connect(generation);
   }
 
@@ -271,6 +320,19 @@ export class LhmApp {
 
   pauseKey() {
     return `pausedUntil|${this.config.lhm?.base}`;
+  }
+
+  pauseReasonKey() {
+    return `pauseReason|${this.config.lhm?.base}`;
+  }
+
+  async clearPause() {
+    if (this.store.get('meta', this.pauseKey()) !== null) {
+      await this.store.set('meta', this.pauseKey(), null);
+    }
+    if (this.store.get('meta', this.pauseReasonKey()) !== null) {
+      await this.store.set('meta', this.pauseReasonKey(), null);
+    }
   }
 
   authMessage() {
@@ -314,17 +376,30 @@ export class LhmApp {
   async poll(generation, epoch, { publish = false } = {}) {
     if (!this.current(generation, epoch) || !this.client) return;
     const client = this.client;
+    const identity = this.identity();
+    this.lastAttempt = { identity, at: this.now() };
     let data;
     try {
       data = await client.data();
     } catch (err) {
       if (this.current(generation, epoch) && client === this.client) {
         await this.failed(err, generation);
+      } else if (identity === this.identity() && !isAuthRefused(err) && !this.retry) {
+        // Gladys reconnected meanwhile (same PC, same credentials): the
+        // failure still delays the next reading of a later reconnection.
+        const delay = this.retryDelay;
+        this.retry = {
+          identity,
+          nextReadAt: this.now() + delay,
+          retryDelay: Math.min(delay * 2, this.maxRetry()),
+          pcAnswers: !NO_ANSWER.has(err?.code),
+          message: this.errorMessage(err, delay),
+        };
       }
       return;
     }
+    if (identity === this.identity()) this.lastRead = { identity, at: this.now(), data };
     if (!this.current(generation, epoch) || client !== this.client) return;
-    this.lastRead = { identity: this.identity(), at: this.now(), data };
     await this.apply(data, { publish });
     if (this.current(generation, epoch)) this.scheduleLoop(this.config.intervalMs, generation);
   }
@@ -334,9 +409,12 @@ export class LhmApp {
     const wasOnline = this.online;
     this.reading = data;
     this.online = true;
+    this.pcAnswers = true;
     this.stateKnown = true;
     this.retryDelay = this.minRetry();
     this.retry = null;
+    this.pausedUntil = 0;
+    await this.clearPause();
     if (!wasOnline) {
       this.logger.info(
         `Libre Hardware Monitor answers: ${data.hardware.length} hardware, ${sensorCount(data)} sensor(s)`,
@@ -359,6 +437,9 @@ export class LhmApp {
     if (generation !== this.generation) return;
     const wasOnline = this.online;
     this.online = false;
+    // "Online" is 0 only when nothing answered: a refusal, an error page or
+    // an unexpected answer come from a PC that is on.
+    this.pcAnswers = !NO_ANSWER.has(err?.code);
     this.stateKnown = true;
     this.halt();
     await this.publishStates();
@@ -374,23 +455,24 @@ export class LhmApp {
     }
     let delay;
     if (err.status === 429) {
-      // Too many requests: a bounded pause, kept in /data.
-      delay = clamp(
-        err.retryAfterMs ?? INTERVALS.BUSY_MIN_MS,
-        INTERVALS.BUSY_MIN_MS,
-        INTERVALS.BUSY_MAX_MS,
-      );
+      // Too many requests: a bounded pause, never shorter than the interval,
+      // kept in /data.
+      const min = Math.max(INTERVALS.BUSY_MIN_MS, this.minRetry());
+      delay = clamp(err.retryAfterMs ?? min, min, INTERVALS.BUSY_MAX_MS);
       this.pausedUntil = this.now() + delay;
     } else {
       delay = this.retryDelay;
       this.retryDelay = Math.min(this.retryDelay * 2, this.maxRetry());
-      if (err.status >= 500 && err.retryAfterMs) {
-        delay = clamp(err.retryAfterMs, delay, INTERVALS.BUSY_MAX_MS);
+      if (err.status >= 500) {
+        // A server error: the wait is kept in /data too (a restart of the
+        // container does not read again at once).
+        if (err.retryAfterMs) delay = clamp(err.retryAfterMs, delay, INTERVALS.BUSY_MAX_MS);
         this.pausedUntil = this.now() + delay;
       }
     }
     if (this.pausedUntil > this.now()) {
       await this.store.set('meta', this.pauseKey(), String(this.pausedUntil));
+      await this.store.set('meta', this.pauseReasonKey(), String(err.status));
     }
     if (wasOnline || delay === this.minRetry()) {
       this.logger.warn(`Libre Hardware Monitor fails: ${err.message}`);
@@ -400,6 +482,7 @@ export class LhmApp {
       identity: this.identity(),
       nextReadAt: this.now() + delay,
       retryDelay: this.retryDelay,
+      pcAnswers: this.pcAnswers,
       message,
     };
     await this.setStatus(false, message);
@@ -419,6 +502,7 @@ export class LhmApp {
 
   async setStatus(connected, message) {
     const key = JSON.stringify([connected, message]);
+    this.statusValue = { connected, message };
     if (key === this.lastStatus) return;
     this.lastStatus = key;
     await this.gladys.setConnectionStatus(connected, message).catch((err) => {
@@ -471,14 +555,22 @@ export class LhmApp {
    * "Online" of the PC (created, once known) always goes; the sensor values
    * of the created features that changed go within what is left of the
    * minute budget, the values published longest ago (or never) first: a big
-   * PC read every 30 s gets all its values, in turn.
+   * PC read every 30 s gets all its values, in turn. The calls run one
+   * after the other, each computing its room once the previous one is
+   * counted (a reading and a device created at once never both spend it).
    */
-  async publishStates() {
+  publishStates() {
+    const run = this.statesQueue.then(() => this.publishStatesNow());
+    this.statesQueue = run.catch(() => {});
+    return run;
+  }
+
+  async publishStatesNow() {
     const created = createdDevices(this.gladys);
     const must = [];
     const onlineId = computerIds(this.gladys).feature(FEATURES.ONLINE);
     if (this.stateKnown && created.computer && featureIdsOf(created.computer).has(onlineId)) {
-      must.push({ device_feature_external_id: onlineId, state: this.online ? 1 : 0 });
+      must.push({ device_feature_external_id: onlineId, state: this.pcAnswers ? 1 : 0 });
     }
     const candidates = [];
     if (this.online && this.reading) {
@@ -516,6 +608,9 @@ export class LhmApp {
       const at = this.now();
       for (const { id, value } of picked) this.published.set(id, { value, at });
     } catch (err) {
+      // Some batches of 100 may have been taken before the failure: counted
+      // as all sent (the budget errs on the safe side).
+      this.budget.record(states.length);
       this.logger.warn(`States not published: ${err.message}`);
     }
   }
@@ -529,7 +624,7 @@ export class LhmApp {
     if (created.computer && this.stateKnown) {
       entries.push({
         external_id: created.computer.external_id,
-        transport: this.online ? 'local' : 'unreachable',
+        transport: this.pcAnswers ? 'local' : 'unreachable',
       });
     }
     for (const [hardwareId, device] of created.hardware) {
