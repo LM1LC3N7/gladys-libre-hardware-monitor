@@ -1,177 +1,121 @@
 {
   "manifest_version": 1,
   "type": "device",
-  "name": "Demo Devices Template",
+  "name": "Libre Hardware Monitor",
   "description": {
-    "en": "Starter template showing sensors, a switch, a dimmable light and a smart plug.",
-    "fr": "Template de démarrage : capteurs, interrupteur, lampe variable et prise connectée."
+    "en": "The sensors of a Windows PC: CPU and GPU temperatures, loads, fans, power.",
+    "fr": "Les capteurs d'un PC Windows : températures CPU et GPU, charges, ventilateurs, puissance."
   },
-  "version": "1.0.0",
-  "docker_image": "ghcr.io/gladysassistant/integration-template-js:1.0.0",
+  "version": "0.1.0",
+  "docker_image": "ghcr.io/lm1lc3n7/gladys-libre-hardware-monitor:0.1.0",
   "gladys_version": ">=5.1.0",
-  "cover_image": "https://raw.githubusercontent.com/GladysAssistant/integration-template-js/master/cover.png",
-  "categories": ["lighting", "security", "environment"],
-  "transports": ["local", "cloud"],
+  "cover_image": "https://raw.githubusercontent.com/LM1LC3N7/gladys-libre-hardware-monitor/main/cover.png",
+  "categories": ["services", "network"],
+  "transports": ["local"],
   "config_schema": [
     {
       "key": "intro",
       "type": "section",
-      "label": { "en": "Getting started", "fr": "Pour commencer" },
+      "label": { "en": "How it works", "fr": "Fonctionnement" },
       "description": {
-        "en": "The demo weather station reads real data from the free Open-Meteo API: pick the coordinates to observe. No account, no API key.",
-        "fr": "La station météo de démonstration lit de vraies données via l'API gratuite Open-Meteo : choisissez les coordonnées à observer. Pas de compte, pas de clé d'API."
+        "en": "Gladys reads the sensors of a Windows PC through the web server of Libre Hardware Monitor (free software, on the PC): temperatures, loads, fans, power, clocks, memory, disks. Each piece of hardware (CPU, GPU, motherboard, disk...) becomes a Gladys device (Discovery tab), and the PC a device whose \"Online\" tells whether it answers. Read only: Gladys sends nothing to the PC but the reading. In Libre Hardware Monitor: Options, Remote Web Server, Run (port 8085); run it as administrator to see every sensor. Unofficial integration, not affiliated with the Libre Hardware Monitor project.",
+        "fr": "Gladys lit les capteurs d'un PC Windows par le serveur web de Libre Hardware Monitor (logiciel libre, sur le PC) : températures, charges, ventilateurs, puissance, fréquences, mémoire, disques. Chaque matériel (CPU, GPU, carte mère, disque...) devient un appareil Gladys (onglet Découverte), et le PC un appareil dont « En ligne » dit s'il répond. Lecture seule : Gladys n'envoie rien au PC que la lecture. Dans Libre Hardware Monitor : Options, Remote Web Server, Run (port 8085) ; lancez-le en administrateur pour voir tous les capteurs. Intégration non officielle, sans lien avec le projet Libre Hardware Monitor."
       },
       "links": [
         {
-          "url": "https://open-meteo.com/en/docs",
-          "label": { "en": "Open-Meteo documentation", "fr": "Documentation Open-Meteo" }
+          "url": "https://github.com/LibreHardwareMonitor/LibreHardwareMonitor",
+          "label": { "en": "Libre Hardware Monitor", "fr": "Libre Hardware Monitor" }
         }
       ]
     },
     {
-      "key": "latitude",
-      "type": "number",
-      "label": { "en": "Latitude", "fr": "Latitude" },
+      "key": "url",
+      "type": "string",
+      "label": { "en": "Address of the PC", "fr": "Adresse du PC" },
       "description": {
-        "en": "Latitude used for the demo weather sensor.",
-        "fr": "Latitude utilisée par le capteur météo de démonstration."
+        "en": "The address of the PC on your network and the port of the web server: <IP>:8085. A bare address is read as http on port 8085; with http:// or https:// and no port, port 80 or 443 (a reverse proxy, a path is kept). Give the PC a fixed address in your router.",
+        "fr": "L'adresse du PC sur votre réseau et le port du serveur web : <IP>:8085. Une adresse seule est lue en http sur le port 8085 ; avec http:// ou https:// et sans port, le port 80 ou 443 (un proxy inverse, un chemin est gardé). Donnez au PC une adresse fixe dans votre box."
       },
-      "placeholder": { "en": "e.g. 48.8566", "fr": "ex. 48.8566" },
-      "required": true,
-      "default": 48.8566,
-      "min": -90,
-      "max": 90
+      "placeholder": {
+        "en": "e.g. 192.168.1.20:8085",
+        "fr": "ex. 192.168.1.20:8085"
+      },
+      "required": true
     },
     {
-      "key": "longitude",
-      "type": "number",
-      "label": { "en": "Longitude", "fr": "Longitude" },
+      "key": "auth_section",
+      "type": "section",
+      "label": { "en": "Authentication (optional)", "fr": "Authentification (facultative)" },
       "description": {
-        "en": "Longitude used for the demo weather sensor.",
-        "fr": "Longitude utilisée par le capteur météo de démonstration."
-      },
-      "placeholder": { "en": "e.g. 2.3522", "fr": "ex. 2.3522" },
-      "required": true,
-      "default": 2.3522,
-      "min": -180,
-      "max": 180
+        "en": "Only when the web server of Libre Hardware Monitor asks for a user name and a password (Options, Remote Web Server, Authentication): type the same here. Leave both empty otherwise. The web server of Libre Hardware Monitor speaks plain http: the password crosses your network in clear, readable by any device on it. Use a password of its own, used nowhere else.",
+        "fr": "Seulement si le serveur web de Libre Hardware Monitor demande un identifiant et un mot de passe (Options, Remote Web Server, Authentication) : saisissez les mêmes ici. Laissez les deux vides sinon. Le serveur web de Libre Hardware Monitor parle en http simple : le mot de passe traverse votre réseau en clair, lisible par tout appareil qui s'y trouve. Utilisez un mot de passe propre à cet usage, employé nulle part ailleurs."
+      }
     },
     {
-      "key": "unit",
+      "key": "username",
+      "type": "string",
+      "label": { "en": "User name", "fr": "Identifiant" },
+      "required": false
+    },
+    {
+      "key": "password",
+      "type": "secret",
+      "label": { "en": "Password", "fr": "Mot de passe" },
+      "description": {
+        "en": "Kept by Gladys in its database, never shown again, sent only to Libre Hardware Monitor, in the Authorization header (HTTP Basic authentication).",
+        "fr": "Gardé par Gladys dans sa base, jamais réaffiché, envoyé seulement à Libre Hardware Monitor, dans l'en-tête Authorization (authentification HTTP Basic)."
+      },
+      "required": false
+    },
+    {
+      "key": "sensors_section",
+      "type": "section",
+      "label": { "en": "Sensors and refresh", "fr": "Capteurs et rafraîchissement" },
+      "description": {
+        "en": "A PC holds hundreds of sensors. The Discovery tab offers, per piece of hardware, either the essential ones (temperatures, loads, fans, power) or all of them (clocks, voltages, memory, throughputs...). The values of the devices you create are sent when they change, 250 per minute at most: beyond that, the oldest values go first.",
+        "fr": "Un PC compte des centaines de capteurs. L'onglet Découverte propose, par matériel, soit l'essentiel (températures, charges, ventilateurs, puissance), soit tout (fréquences, tensions, mémoire, débits...). Les valeurs des appareils créés sont envoyées quand elles changent, 250 par minute au plus : au-delà, les plus anciennes passent d'abord."
+      }
+    },
+    {
+      "key": "sensor_set",
       "type": "select",
-      "label": { "en": "Temperature unit", "fr": "Unité de température" },
-      "required": false,
-      "default": "celsius",
+      "label": { "en": "Sensors offered", "fr": "Capteurs proposés" },
+      "required": true,
+      "default": "essentials",
       "options": [
-        { "value": "celsius", "label": { "en": "Celsius", "fr": "Celsius" } },
-        { "value": "fahrenheit", "label": { "en": "Fahrenheit", "fr": "Fahrenheit" } }
+        {
+          "value": "essentials",
+          "label": {
+            "en": "Essential: temperatures, loads, fans, power",
+            "fr": "L'essentiel : températures, charges, ventilateurs, puissance"
+          }
+        },
+        { "value": "all", "label": { "en": "All the sensors", "fr": "Tous les capteurs" } }
       ]
     },
     {
-      "key": "poll_frequency",
-      "type": "number",
-      "label": { "en": "Refresh interval (s)", "fr": "Intervalle de rafraîchissement (s)" },
-      "description": {
-        "en": "How often sensors are polled, in seconds (one minute minimum).",
-        "fr": "Fréquence d'interrogation des capteurs, en secondes (une minute minimum)."
-      },
-      "required": false,
-      "default": 300,
-      "min": 60,
-      "max": 3600
+      "key": "poll_interval",
+      "type": "select",
+      "label": { "en": "Reading", "fr": "Lecture" },
+      "required": true,
+      "default": "60",
+      "options": [
+        { "value": "30", "label": { "en": "Every 30 seconds", "fr": "Toutes les 30 secondes" } },
+        { "value": "60", "label": { "en": "Every minute", "fr": "Toutes les minutes" } },
+        { "value": "120", "label": { "en": "Every 2 minutes", "fr": "Toutes les 2 minutes" } },
+        { "value": "300", "label": { "en": "Every 5 minutes", "fr": "Toutes les 5 minutes" } }
+      ]
     }
   ],
   "actions": [
     {
-      "key": "test_weather",
-      "label": { "en": "Test the weather provider", "fr": "Tester le fournisseur météo" },
+      "key": "test_connection",
+      "label": { "en": "Test the connection", "fr": "Tester la connexion" },
+      "description": {
+        "en": "Reads the PC now (even after a refused password) and counts its hardware and sensors.",
+        "fr": "Lit le PC maintenant (même après un mot de passe refusé) et compte son matériel et ses capteurs."
+      },
       "timeout_seconds": 30
-    },
-    {
-      "key": "identify",
-      "label": { "en": "Identify a device", "fr": "Identifier un appareil" },
-      "fields": [
-        {
-          "key": "device",
-          "type": "select",
-          "source": "devices",
-          "label": { "en": "Device", "fr": "Appareil" },
-          "required": true
-        }
-      ]
-    }
-  ],
-  "scene_triggers": [
-    {
-      "key": "motion_detected",
-      "label": { "en": "Motion detected", "fr": "Mouvement détecté" },
-      "description": {
-        "en": "A demo motion sensor saw a person or an animal move.",
-        "fr": "Un détecteur de démonstration a vu bouger une personne ou un animal."
-      },
-      "fields": [
-        {
-          "key": "device",
-          "type": "select",
-          "source": "devices",
-          "label": { "en": "Sensor", "fr": "Détecteur" }
-        },
-        {
-          "key": "target",
-          "type": "multi_select",
-          "label": { "en": "What moved", "fr": "Ce qui a bougé" },
-          "options": [
-            { "value": "person", "label": { "en": "Person", "fr": "Personne" } },
-            { "value": "animal", "label": { "en": "Animal", "fr": "Animal" } }
-          ]
-        }
-      ],
-      "variables": [
-        {
-          "key": "target",
-          "type": "string",
-          "label": { "en": "What moved", "fr": "Ce qui a bougé" }
-        }
-      ]
-    }
-  ],
-  "scene_actions": [
-    {
-      "key": "identify_device",
-      "label": { "en": "Identify a device", "fr": "Identifier un appareil" },
-      "description": {
-        "en": "Make a device signal itself (the demo light blinks).",
-        "fr": "Fait se signaler un appareil (la lampe de démonstration clignote)."
-      },
-      "timeout_seconds": 15,
-      "fields": [
-        {
-          "key": "device",
-          "type": "select",
-          "source": "devices",
-          "label": { "en": "Device", "fr": "Appareil" },
-          "required": true
-        }
-      ],
-      "outputs": [
-        {
-          "key": "signalled",
-          "type": "boolean",
-          "label": { "en": "Device signalled", "fr": "Appareil signalé" }
-        }
-      ]
-    }
-  ],
-  "widgets": [
-    {
-      "key": "demo_status",
-      "label": { "en": "Demo status", "fr": "État de la démo" },
-      "description": {
-        "en": "Live temperature and plug power, plug connection and observed location.",
-        "fr": "Température et puissance en direct, connexion de la prise, position observée."
-      },
-      "icon": "activity",
-      "action_timeout_seconds": 15
     }
   ]
 }

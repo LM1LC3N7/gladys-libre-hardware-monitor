@@ -1,67 +1,113 @@
-# Template de démonstration
+# Libre Hardware Monitor
 
-Ceci est la documentation utilisateur de l'intégration. Gladys ré-héberge ce
-fichier et affiche un lien **Documentation** permanent vers lui dans l'écran
-de configuration (dans la langue de l'utilisateur, avec l'anglais en repli) —
-c'est au moment de configurer que l'utilisateur en a le plus besoin. Gardez
-les courtes indications d'accueil dans les blocs `section` du `config_schema`
-du manifest ; mettez ici le pas-à-pas détaillé (captures d'écran, dépannage…).
+Suivez les capteurs d'un PC Windows dans Gladys : températures du CPU et du
+GPU, charges, vitesses des ventilateurs, puissance, et, si vous le souhaitez,
+fréquences, tensions, mémoire, disques et débits réseau. Gladys les lit par
+le serveur web de
+[Libre Hardware Monitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor),
+un logiciel libre qui tourne sur le PC.
+
+> **Intégration non officielle**, sans lien avec le projet Libre Hardware
+> Monitor. Elle n'a **jamais été testée avec un vrai PC** pour l'instant :
+> elle a été écrite d'après le format que lit la bibliothèque de référence,
+> et testée sur des réponses simulées. Vos retours sont les bienvenus.
 
 ## Ce que vous obtenez
 
-Six appareils de démonstration apparaissent après l'installation : une
-station météo (vraies données Open-Meteo), un interrupteur, une lampe
-variable, une prise connectée avec mesure de puissance, un détecteur de
-mouvement et une caméra.
+- **Un appareil par matériel** (CPU, GPU, carte mère, mémoire, chaque disque,
+  chaque carte réseau...), avec une fonction en lecture seule par capteur.
+- **Un appareil pour le PC**, dont la fonction « Online » vaut 1 tant que
+  Libre Hardware Monitor répond et 0 sinon (PC éteint, en veille, logiciel
+  fermé) : utilisez-la dans une scène, par exemple pour être prévenu quand le
+  PC s'éteint.
+- **Lecture seule.** Gladys n'envoie rien au PC que la lecture des capteurs :
+  aucune commande, aucun arrêt, rien qu'un « tout éteindre » ou un assistant
+  vocal pourrait déclencher.
 
-## Configuration
+Unités : températures en °C, puissance en W, tensions en V, courants en A,
+mémoire en Go ou Mo, débits en Ko/s, durées en secondes. Gladys n'a pas
+d'unité pour une charge en %, un ventilateur en tr/min (RPM) ou une
+fréquence en MHz sur ces capteurs : l'unité est alors écrite dans le nom de
+la fonction (« CPU Total Load (%) »).
 
-1. Ouvrez l'onglet **Configuration** de l'intégration.
-2. Renseignez la **latitude** et la **longitude** que la station météo de
-   démonstration doit observer (Paris par défaut), et choisissez votre unité
-   de température. L'**intervalle de rafraîchissement** règle la fréquence
-   de lecture de la station météo et de la puissance de la prise : toutes
-   les 5 minutes par défaut, toutes les minutes au plus.
-3. Enregistrez : les appareils apparaissent dans l'onglet **Découverte**,
-   prêts à être ajoutés.
+## Sur le PC
 
-Le réglage **Préférer la connexion locale** pilote la prise de
-démonstration : elle affiche en badge le canal réellement utilisé (local ou
-cloud), avec un point orange quand elle fonctionne en mode dégradé (local
-refusé, bascule cloud).
+1. Installez Libre Hardware Monitor (0.9.7 ou plus récent conseillé ; les
+   versions plus anciennes fonctionnent, avec des valeurs moins précises).
+2. Lancez-le **en administrateur**, sinon la plupart des capteurs restent
+   cachés.
+3. Menu **Options → Remote Web Server → Run**. Le port par défaut est 8085
+   (**Options → Remote Web Server → Port** pour le changer).
+4. Laissez le pare-feu de Windows accepter les connexions entrantes sur ce
+   port, au moins depuis la machine de Gladys.
+5. Donnez au PC une adresse fixe dans votre box, pour que Gladys le trouve
+   toujours.
+6. Cochez **Options → Run On Windows Startup** si le PC doit être suivi après
+   chaque redémarrage.
 
-## Actions
+### Authentification (facultative)
 
-- **Tester le fournisseur météo** — effectue une requête en direct vers
-  Open-Meteo et affiche la température et l'humidité actuelles sous le
-  bouton.
-- **Identifier un appareil** — choisissez un de vos appareils dans la liste
-  et il se signale (la lampe de démonstration « clignote » dans les logs).
+Libre Hardware Monitor peut demander un identifiant et un mot de passe
+(**Options → Remote Web Server → Authentication**). Si vous les avez définis,
+saisissez les mêmes dans Gladys ; laissez les deux champs vides sinon.
 
-## Scènes
+Son serveur web parle en **http** simple : le mot de passe traverse votre
+réseau en clair, lisible par tout appareil qui s'y trouve. Utilisez un mot de
+passe propre à cet usage, employé nulle part ailleurs. Dans Gladys, le mot de
+passe est un champ secret : gardé par Gladys dans sa base, jamais réaffiché,
+envoyé seulement à Libre Hardware Monitor (authentification HTTP Basic). Il
+n'est jamais écrit dans les journaux ni dans le volume `/data` de
+l'intégration.
 
-L'intégration ajoute ses propres cartes à l'éditeur de scènes (Gladys 5.1
-ou plus récent), dans la catégorie **Intégrations** :
+## Dans Gladys
 
-- **Mouvement détecté** (déclencheur) — lance la scène quand un détecteur
-  de démonstration voit bouger quelque chose. Choisissez éventuellement le
-  détecteur et ce qui a bougé (personne, animal) ; laissés vides, toute
-  détection correspond. Les actions suivantes peuvent lire ce qui a bougé
-  avec `{{triggerEvent.data.target}}`.
-- **Identifier un appareil** (action) — fait se signaler l'appareil choisi.
-  Elle indique si l'appareil a pu se signaler, pour que les actions
-  suivantes puissent en dépendre.
+1. Installez l'intégration depuis le store, puis ouvrez sa configuration.
+2. **Adresse du PC** : `192.168.1.20:8085` (une adresse seule est lue en http
+   sur le port 8085). Derrière un proxy inverse : `https://hôte/chemin` ; le
+   certificat doit alors venir d'une autorité reconnue.
+3. **Capteurs proposés** : « L'essentiel » (températures, charges,
+   ventilateurs, puissance) ou « Tous les capteurs ». Un PC compte des
+   centaines de capteurs : commencez par l'essentiel.
+4. **Lecture** : toutes les 30 s, minutes (par défaut), 2 ou 5 minutes.
+5. Enregistrez, puis appuyez sur **Tester la connexion** : le PC est lu
+   aussitôt, son matériel et ses capteurs comptés.
+6. Ouvrez l'onglet **Découverte** et créez les appareils voulus.
 
-## Tableau de bord
+Changer « Capteurs proposés » ne retire jamais une fonction déjà créée : un
+appareil garde toutes ses fonctions, et les nouvelles sont proposées par
+« Mettre à jour ».
 
-Ajoutez le widget **État de la démo** à un tableau de bord : il affiche en
-direct la température de la station météo et la puissance de la prise du
-bureau, la connexion utilisée par la prise (en orange si dégradée) et la
-position observée. Son bouton **Identifier la lampe** fait se signaler la
-lampe de démonstration.
+## Limites
+
+- **250 valeurs par minute au plus.** Gladys accepte 300 états par minute
+  d'une intégration. Seules les valeurs des appareils créés qui ont changé
+  sont envoyées (arrondies : 0,1 °C, 1 %, 1 tr/min, 0,1 W...). Sur un gros PC
+  lu toutes les 30 secondes, les valeurs au-delà du budget attendent la
+  minute suivante, les plus anciennes d'abord : chaque valeur arrive, un peu
+  plus tard.
+- **Un seul PC par intégration** dans cette version.
+- Un appareil propose 200 fonctions au plus ; une lecture est limitée à 64
+  matériels et 5 000 capteurs, et à 8 Mo.
+- Quand le PC ne répond pas, Gladys réessaie après l'intervalle de lecture,
+  puis de plus en plus espacé jusqu'à toutes les 5 minutes : la fonction
+  « Online » peut mettre jusqu'à 5 minutes à repasser à 1 après une longue
+  coupure.
+- Un mot de passe refusé (HTTP 401) arrête les lectures jusqu'à ce que vous
+  enregistriez la configuration ou appuyiez sur « Tester la connexion » :
+  Gladys ne réessaie jamais seul le même mot de passe.
 
 ## Dépannage
 
-L'intégration journalise tout ce qu'elle fait : consultez les logs de
-l'intégration depuis l'interface Gladys (ou `docker logs` sur l'hôte) avec
-`LOG_LEVEL=debug` pour le détail complet.
+| État                                      | À vérifier                                                                                                                                                                |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Ne répond pas                             | PC allumé ? Libre Hardware Monitor lancé, serveur web démarré (Options → Remote Web Server → Run) ? Port ouvert dans le pare-feu de Windows ? Bonne adresse et bon port ? |
+| Ne répond pas comme le serveur web        | Le port est celui d'un autre logiciel, ou le serveur web est arrêté. Ouvrez `http://<IP>:8085/data.json` dans un navigateur : vous devez voir du JSON.                    |
+| Demande un identifiant et un mot de passe | L'authentification est active dans Libre Hardware Monitor : saisissez le même identifiant et le même mot de passe dans Gladys.                                            |
+| A refusé l'identifiant ou le mot de passe | Saisissez-les de nouveau, enregistrez.                                                                                                                                    |
+| Aucun capteur                             | Lancez Libre Hardware Monitor en administrateur ; vérifiez le matériel coché dans son menu Options.                                                                       |
+
+## Vie privée
+
+L'intégration ne parle qu'à l'adresse que vous saisissez. Elle lit les noms
+du matériel du PC et ceux de ses cartes réseau, qui deviennent des noms
+d'appareils et de fonctions Gladys. Rien ne sort de votre réseau.

@@ -1,61 +1,104 @@
-# Demo Devices Template
+# Libre Hardware Monitor
 
-This is the user documentation of the integration. Gladys re-hosts this file
-and shows a permanent **Documentation** link to it in the Configuration screen
-(in the user's language, with English as the fallback) — it is when
-configuring that the user needs it most. Keep the short onboarding hints in
-the `section` blocks of the manifest `config_schema`; put the long
-step-by-step (screenshots, troubleshooting…) here.
+Follow the sensors of a Windows PC in Gladys: CPU and GPU temperatures,
+loads, fan speeds, power, and, if you wish, clocks, voltages, memory, disks
+and network throughputs. Gladys reads them through the web server of
+[Libre Hardware Monitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor),
+a free program that runs on the PC.
+
+> **Unofficial integration**, not affiliated with the Libre Hardware Monitor
+> project. It has **never been tested with a real PC** yet: it was written
+> from the format the reference library reads, and tested against simulated
+> answers. Your feedback is welcome.
 
 ## What you get
 
-Six demo devices show up after installation: a weather station (real data
-from Open-Meteo), a switch, a dimmable light, a smart plug with power
-metering, a motion sensor and a camera.
+- **One device per piece of hardware** (CPU, GPU, motherboard, memory, each
+  disk, each network card...), with one read-only feature per sensor.
+- **One device for the PC**, whose "Online" feature is 1 while Libre Hardware
+  Monitor answers and 0 when it does not (PC off, asleep, program closed):
+  use it in a scene, for example to be told when the PC turns off.
+- **Read only.** Gladys sends nothing to the PC but the reading of the
+  sensors: no command, no shutdown, nothing that "turn everything off" or a
+  voice assistant could trigger.
 
-## Configuration
+Units: temperatures in °C, power in W, voltages in V, currents in A, memory
+in GB or MB, throughputs in KB/s, durations in seconds. Gladys has no unit
+for a load in %, a fan in RPM or a clock in MHz on these sensors: the unit is
+then written in the name of the feature ("CPU Total Load (%)").
 
-1. Open the **Configuration** tab of the integration.
-2. Set the **latitude** and **longitude** the demo weather station should
-   observe (they default to Paris), and pick your temperature unit.
-   The **refresh interval** sets how often the weather station and the
-   plug's power are read: every 5 minutes by default, every minute at most.
-3. Save: the devices appear in the **Discovery** tab, ready to be added.
+## On the PC
 
-The **Prefer the local connection** toggle drives the demo plug: it reports
-the channel it actually uses as a badge (local or cloud), with an orange dot
-when it runs degraded (local refused, cloud fallback).
+1. Install Libre Hardware Monitor (0.9.7 or later recommended; older versions
+   work, with less precise values).
+2. Run it **as administrator**, or most sensors stay hidden.
+3. Menu **Options → Remote Web Server → Run**. The default port is 8085
+   (**Options → Remote Web Server → Port** to change it).
+4. Let the Windows firewall accept incoming connections on this port, at
+   least from the Gladys machine.
+5. Give the PC a fixed address in your router, so Gladys always finds it.
+6. Tick **Options → Run On Windows Startup** if the PC should be followed
+   after every restart.
 
-## Actions
+### Authentication (optional)
 
-- **Test the weather provider** — performs a live request to Open-Meteo and
-  shows the current temperature and humidity under the button.
-- **Identify a device** — pick one of your devices in the list and it will
-  signal itself (the demo light "blinks" in the logs).
+Libre Hardware Monitor can ask for a user name and a password
+(**Options → Remote Web Server → Authentication**). If you set them, type the
+same in Gladys; leave both fields empty otherwise.
 
-## Scenes
+Its web server speaks plain **http**: the password crosses your network in
+clear, readable by any device on it. Use a password of its own, used nowhere
+else. In Gladys, the password is a secret field: kept by Gladys in its
+database, never shown again, sent only to Libre Hardware Monitor (HTTP Basic
+authentication). It is never written to the logs nor to the `/data` volume
+of the integration.
 
-The integration adds its own cards to the scene editor (Gladys 5.1 or
-later), under the **Integrations** category:
+## In Gladys
 
-- **Motion detected** (trigger) — starts the scene when a demo motion sensor
-  sees something move. Optionally pick the sensor and what moved (person,
-  animal); left empty, any detection matches. The following actions can
-  read what moved with `{{triggerEvent.data.target}}`.
-- **Identify a device** (action) — makes the chosen device signal itself.
-  It returns whether the device could signal itself, so the following
-  actions can depend on it.
+1. Install the integration from the store, then open its configuration.
+2. **Address of the PC**: `192.168.1.20:8085` (a bare address is read as
+   http on port 8085). Behind a reverse proxy: `https://host/path`; the
+   certificate must then come from a known authority.
+3. **Sensors offered**: "Essential" (temperatures, loads, fans, power) or
+   "All the sensors". A PC holds hundreds of sensors: start with the
+   essential ones.
+4. **Reading**: every 30 s, minute (default), 2 or 5 minutes.
+5. Save, then press **Test the connection**: it reads the PC at once and
+   counts its hardware and sensors.
+6. Open the **Discovery** tab and create the devices you want.
 
-## Dashboard
+Changing "Sensors offered" never removes a feature you already created: a
+device keeps all of its features, and the new ones are offered with "Update".
 
-Add the **Demo status** widget to a dashboard: it shows the live
-temperature of the weather station and the power of the office plug, the
-connection the plug currently uses (orange when degraded) and the observed
-location. Its **Identify the light** button makes the demo light signal
-itself.
+## Limits
+
+- **250 values per minute at most.** Gladys accepts 300 states per minute
+  from an integration. Only the values of the devices you created that
+  changed are sent (rounded: 0.1 °C, 1 %, 1 RPM, 0.1 W...). On a big PC read
+  every 30 seconds, values beyond the budget wait for the next minute, the
+  oldest first: every value still arrives, a little later.
+- **One PC per integration** in this version.
+- A device offers 200 features at most; a reading is limited to 64 pieces of
+  hardware and 5,000 sensors, and to 8 MB.
+- When the PC does not answer, Gladys tries again after the reading
+  interval, then at a growing pace up to every 5 minutes: the "Online"
+  feature may take up to 5 minutes to come back to 1 after a long outage.
+- A refused password (HTTP 401) stops the readings until you save the
+  configuration or press "Test the connection": Gladys never tries the same
+  password again by itself.
 
 ## Troubleshooting
 
-The integration logs everything it does: check the integration logs from the
-Gladys UI (or `docker logs` on the host) with `LOG_LEVEL=debug` for the full
-detail.
+| Status                                | What to check                                                                                                                                             |
+| ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Does not answer                       | PC on? Libre Hardware Monitor running, web server started (Options → Remote Web Server → Run)? Port open in the Windows firewall? Right address and port? |
+| Does not answer like the web server   | The port is that of another program, or the web server is off. Open `http://<IP>:8085/data.json` in a browser: you should see JSON.                       |
+| Asks for a user name and a password   | Authentication is on in Libre Hardware Monitor: type the same user name and password in Gladys.                                                           |
+| Refused the user name or the password | Type them again, save.                                                                                                                                    |
+| No sensor                             | Run Libre Hardware Monitor as administrator; check the hardware ticked in its Options menu.                                                               |
+
+## Privacy
+
+The integration only talks to the address you type. It reads the names of
+the hardware of the PC and the names of its network cards, which become
+names of Gladys devices and features. Nothing leaves your network.
