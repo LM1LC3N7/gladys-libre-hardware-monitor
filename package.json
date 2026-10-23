@@ -1,6 +1,6 @@
 {
   "name": "gladys-libre-hardware-monitor",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "description": "Gladys Assistant external integration for Libre Hardware Monitor: the sensors of a Windows PC (CPU and GPU temperatures, loads, fans, power), read only, through the web server of Libre Hardware Monitor. Unofficial, not affiliated with the Libre Hardware Monitor project.",
   "type": "module",

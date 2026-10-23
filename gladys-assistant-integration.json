@@ -6,8 +6,8 @@
     "en": "The sensors of a Windows PC: CPU and GPU temperatures, loads, fans, power.",
     "fr": "Les capteurs d'un PC Windows : températures CPU et GPU, charges, ventilateurs, puissance."
   },
-  "version": "0.1.1",
-  "docker_image": "ghcr.io/lm1lc3n7/gladys-libre-hardware-monitor:0.1.1",
+  "version": "0.1.2",
+  "docker_image": "ghcr.io/lm1lc3n7/gladys-libre-hardware-monitor:0.1.2",
   "gladys_version": ">=5.1.0",
   "cover_image": "https://raw.githubusercontent.com/LM1LC3N7/gladys-libre-hardware-monitor/main/cover.png",
   "categories": ["services", "network"],
